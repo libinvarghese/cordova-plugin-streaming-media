@@ -10,6 +10,8 @@
 	- (void)startPlayer:(NSString*)uri;
 	- (void)moviePlayBackDidFinish:(NSNotification*)notification;
 	- (void)cleanup;
+
+	@property (nonatomic, strong) NSMutableDictionary *watchCallbacks;
 @end
 
 @implementation StreamingMedia {
@@ -22,9 +24,21 @@
     BOOL controls;
 }
 
+
 NSString * const TYPE_VIDEO = @"VIDEO";
 NSString * const TYPE_AUDIO = @"AUDIO";
 NSString * const DEFAULT_IMAGE_SCALE = @"center";
+
+
+-(NSMutableDictionary *)watchCallbacks {
+	if (_watchCallbacks) {
+		
+	} else {
+		self.watchCallbacks = [[NSMutableDictionary alloc] initWithCapacity: 2];
+	}
+	
+	return _watchCallbacks;
+}
 
 -(void)parseOptions:(NSDictionary *)options type:(NSString *) type {
 	// Common options
@@ -121,6 +135,67 @@ NSString * const DEFAULT_IMAGE_SCALE = @"center";
     [self stop:command type:[NSString stringWithString:TYPE_AUDIO]];
 }
 
+-(void)loadState:(CDVInvokedUrlCommand *) command {
+	CDVPluginResult *result = nil;
+	if (moviePlayer) {
+		result = [CDVPluginResult resultWithStatus: CDVCommandStatus_OK
+							   messageAsNSUInteger: moviePlayer.loadState];
+	} else {
+		result = [CDVPluginResult resultWithStatus: CDVCommandStatus_ERROR
+								   messageAsString: @"Player does not exist"];
+	}
+	
+	[self.commandDelegate sendPluginResult: result
+								callbackId: command.callbackId];
+}
+
+-(void)playbackState:(CDVInvokedUrlCommand *) command {
+	CDVPluginResult *result = nil;
+	if (moviePlayer) {
+		result = [CDVPluginResult resultWithStatus: CDVCommandStatus_OK
+							   messageAsNSUInteger: moviePlayer.playbackState];
+	} else {
+		result = [CDVPluginResult resultWithStatus: CDVCommandStatus_ERROR
+								   messageAsString: @"Player does not exist"];
+	}
+	
+	[self.commandDelegate sendPluginResult: result
+								callbackId: command.callbackId];
+}
+
+-(void)unwatchLoadState:(CDVInvokedUrlCommand *) command {
+	self.watchCallbacks[MPMoviePlayerLoadStateDidChangeNotification] = nil;
+	
+}
+
+-(void)watchLoadState:(CDVInvokedUrlCommand *) command {
+	NSString *callbackKey = MPMoviePlayerLoadStateDidChangeNotification;
+	
+	self.watchCallbacks[callbackKey] = command.callbackId;
+	
+	// Listen for updates to LoadState
+	[[NSNotificationCenter defaultCenter] addObserver: self
+											 selector:@selector(didChangeLoadState:)
+												 name:callbackKey
+											   object:nil];
+}
+
+-(void)unwatchPlaybackState:(CDVInvokedUrlCommand *) command {
+	self.watchCallbacks[MPMoviePlayerPlaybackStateDidChangeNotification] = nil;
+}
+
+-(void)watchPlaybackState:(CDVInvokedUrlCommand *) command {
+	NSString *callbackKey = MPMoviePlayerPlaybackStateDidChangeNotification;
+
+	self.watchCallbacks[callbackKey] = command.callbackId;
+
+	// Listen for updates to PlaybackState
+	[[NSNotificationCenter defaultCenter] addObserver: self
+											 selector:@selector(didChangePlaybackState:)
+												 name:callbackKey
+											   object:nil];
+}
+
 -(void) setBackgroundColor:(NSString *)color {
 	if ([color hasPrefix:@"#"]) {
 		// HEX value
@@ -199,24 +274,27 @@ NSString * const DEFAULT_IMAGE_SCALE = @"center";
 
 -(void)startPlayer:(NSString*)uri {
 	NSURL *url = [NSURL URLWithString:uri];
+	NSNotificationCenter *notifyCenter = nil;
 
 	moviePlayer =  [[MPMoviePlayerController alloc] initWithContentURL:url];
 
+	notifyCenter = [NSNotificationCenter defaultCenter];
 	// Listen for playback finishing
-	[[NSNotificationCenter defaultCenter] addObserver:self
-											 selector:@selector(moviePlayBackDidFinish:)
-												 name:MPMoviePlayerPlaybackDidFinishNotification
-											   object:moviePlayer];
+	[notifyCenter addObserver:self
+					 selector:@selector(moviePlayBackDidFinish:)
+						 name:MPMoviePlayerPlaybackDidFinishNotification
+					   object:moviePlayer];
 	// Listen for click on the "Done" button
-	[[NSNotificationCenter defaultCenter] addObserver:self
-											 selector:@selector(doneButtonClick:)
-												 name:MPMoviePlayerWillExitFullscreenNotification
-											   object:nil];
+	[notifyCenter addObserver:self
+					 selector:@selector(doneButtonClick:)
+						 name:MPMoviePlayerWillExitFullscreenNotification
+					   object:nil];
+	
 	// Listen for orientation change
-	[[NSNotificationCenter defaultCenter] addObserver:self
-											 selector:@selector(orientationChanged:)
-												 name:UIDeviceOrientationDidChangeNotification
-											   object:nil];
+	[notifyCenter addObserver:self
+					 selector:@selector(orientationChanged:)
+						 name:UIDeviceOrientationDidChangeNotification
+					   object:nil];
 
 	if (controls) {
         [moviePlayer setControlStyle:MPMovieControlStyleDefault];
@@ -278,6 +356,38 @@ NSString * const DEFAULT_IMAGE_SCALE = @"center";
 
 	CDVPluginResult *pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsBool:true];
 	[self.commandDelegate sendPluginResult:pluginResult callbackId:callbackId];
+}
+
+-(void)didChangePlaybackState:(NSNotification*)notification{
+	CDVPluginResult *result = nil;
+	NSString *callbackID = nil;
+	
+	callbackID = self.watchCallbacks[MPMoviePlayerPlaybackStateDidChangeNotification];
+	
+	if (callbackID) {
+		result = [CDVPluginResult resultWithStatus: CDVCommandStatus_OK
+								messageAsMultipart: @[@"playbackState",
+													  @(moviePlayer.playbackState)]];
+		result.keepCallback = @(YES);
+		
+		[self.commandDelegate sendPluginResult: result callbackId: callbackID];
+	}
+}
+
+-(void)didChangeLoadState:(NSNotification*)notification{
+	CDVPluginResult *result = nil;
+	NSString *callbackID = nil;
+	
+	callbackID = self.watchCallbacks[MPMoviePlayerLoadStateDidChangeNotification];
+	
+	if (callbackID) {
+		result = [CDVPluginResult resultWithStatus: CDVCommandStatus_OK
+								messageAsMultipart: @[@"loadState",
+													  @(moviePlayer.loadState)]];
+		result.keepCallback = @(YES);
+		
+		[self.commandDelegate sendPluginResult: result callbackId: callbackID];
+	}
 }
 
 - (void)cleanup {
