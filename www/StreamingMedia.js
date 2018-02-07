@@ -45,12 +45,19 @@ class StreamingMedia {
     exec(onSuccess || null, onError || null, "StreamingMedia", "playbackState",
       []);
   }
-  subscribe(event, onEvent) {
-    argscheck.checkArgs("sfF", "subscribe", arguments);
+  watch(event, onEvent) {
+    argscheck.checkArgs("sfF", "watch", arguments);
 
     if (StreamingMedia.events.includes(event)) {
+      // Create Channel for event
       if (!(event in channel)) {
         channel.create(event);
+      }
+
+      // If no subscribers, start watching.
+      // Because, we are stopping watch when there are no subscribers. Hence
+      // needs restart
+      if (channel[event].numHandlers === 0) {
         exec(StreamingMedia.onSubscribeEvent, null, "StreamingMedia",
           "watch" + event.capitalize(), []);
       }
@@ -61,19 +68,23 @@ class StreamingMedia {
         + JSON.stringify(StreamingMedia.events));
     }
   }
-  unsubscribe(event, onEvent) {
-    argscheck.checkArgs("sfF", "subscribe", arguments);
+  unwatch(event, onEvent) {
+    argscheck.checkArgs("sfF", "unwatch", arguments);
 
     if (StreamingMedia.events.includes(event) === false) {
       throw TypeError(event + " not in "
         + JSON.stringify(StreamingMedia.events));
     }
     if (event in channel === false) {
-      throw TypeError(event + " has not be subscribed");
+      throw TypeError(event + " has not be watched");
     }
 
     channel[event].unsubscribe(onEvent);
-    exec(null, null, "StreamingMedia", "unwatch" + event.capitalize(), []);
+
+    // Stop watch when there are no subscribers.
+    if (channel[event].numHandlers === 0) {
+      exec(null, null, "StreamingMedia", "unwatch" + event.capitalize(), []);
+    }
   }
   static install() {
     if (!window.plugins) {
