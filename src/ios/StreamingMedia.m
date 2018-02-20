@@ -164,8 +164,13 @@ NSString * const DEFAULT_IMAGE_SCALE = @"center";
 }
 
 -(void)unwatchLoadState:(CDVInvokedUrlCommand *) command {
-	self.watchCallbacks[MPMoviePlayerLoadStateDidChangeNotification] = nil;
+	NSString *callbackID = nil;
 	
+	callbackID = self.watchCallbacks[MPMoviePlayerLoadStateDidChangeNotification];
+	if (callbackID) {
+		[self.commandDelegate evalJs: [NSString stringWithFormat: @"delete cordova.callbacks['%@']", callbackID]];
+	}
+	self.watchCallbacks[MPMoviePlayerLoadStateDidChangeNotification] = nil;
 }
 
 -(void)watchLoadState:(CDVInvokedUrlCommand *) command {
@@ -181,6 +186,13 @@ NSString * const DEFAULT_IMAGE_SCALE = @"center";
 }
 
 -(void)unwatchPlaybackState:(CDVInvokedUrlCommand *) command {
+	NSString *callbackID = nil;
+	
+	callbackID = self.watchCallbacks[MPMoviePlayerPlaybackStateDidChangeNotification];
+	if (callbackID) {
+		[self.commandDelegate evalJs: [NSString stringWithFormat: @"delete cordova.callbacks['%@']", callbackID]];
+	}
+
 	self.watchCallbacks[MPMoviePlayerPlaybackStateDidChangeNotification] = nil;
 }
 
